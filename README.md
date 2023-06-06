@@ -7,15 +7,16 @@ Cloudflare Worker 代理工具
 * 将worler.js里passwd的变量值修改后复制全部内容到Worker部署.
 * 在程序目录下面新建一个config.txt文件, 输入类似下面的配置内容:
 
-{"domain":"a.com","psw":"passwd value","sport":1080,"sbind":"127.0.0.1","wkip":"","byip":"","cfhs":["ipip.net",""]}
+{"domain":"a.com","psw":"passwd value","sport":1080,"sbind":"127.0.0.1","wkip":"","byip":"","proxy":"","cfhs":[""]}
 
 * domain: 	worker绑定的域名 (必填)
-* psw: 			与worker.js里的passwd变量相同值 (必填)
-* sport: 		本地绑定的socks5端口
-* sbind: 		本地绑定的地址, 一般为 127.0.0.1
-* wkip: 		为本地连接到worker指定优选的IP, 不指定则不优选IP
-* byip: 		指定未被worker屏蔽的Cloudflare anycast IP, 不指定则通过本地连接
-* cfhs: 		指定特定域名为worker屏蔽的域名
+* psw: 		与worker.js里的passwd变量相同值 (必填)
+* sport: 	本地绑定的socks5端口
+* sbind: 	本地绑定的地址, 一般为 127.0.0.1
+* wkip: 	为本地连接到worker指定优选的IP, 不指定则不优选IP
+* byip: 	指定未被worker屏蔽第三方Cloudflare中转IP, 不指定则被屏蔽的IP不使用worker连接
+* proxy:	为worker指定前置socks5代理, 例如: socks://127.0.0.1:1080
+* cfhs: 	指定特定域名为被worker屏蔽的域名
 
 运行程序后将在本地机器开启一个socks5代理端口，浏览器或应用程序设置代理到此端口即可代理上网
 
