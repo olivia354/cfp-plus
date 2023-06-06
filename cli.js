@@ -5,6 +5,7 @@ const fs = require('fs');
 const net=require('net');
 const https = require('https');
 const {WebSocket, createWebSocketStream}=require('ws');
+const {SocksProxyAgent}=require('socks-proxy-agent');
 const logcb= (...args)=>console.log.bind(this,...args);
 const errcb= (...args)=>console.error.bind(this,...args);
 const opts={}, cache={};
@@ -25,10 +26,10 @@ const ADDR6=CIDR6.map(cidr=>{
 const ipInCFCidr=ip=>{
 	if(ip.indexOf(':')==-1){
 		const ipa=ip.split('.').map(Number);
-		return {cf:ADDR4.some(({a,m})=>(ipa.reduce((s,b,i)=>s+=(b<<24-8*i),0)&m)===(a&m)), ip:ip};
+		return {cf:ADDR4.some(({a,m})=>(ipa.reduce((s,b,i)=>s+=(b<<24-8*i),0)&m)===(a&m)), ip};
 	} else {
 		const ips=ip.split(':').map(p=>parseInt(p,16).toString(2).padStart(16,'0')).join('');
-		return {cf:ADDR6.some(({s,m})=>ips.slice(0, m)===s), ip:ip};
+		return {cf:ADDR6.some(({s,m})=>ips.slice(0, m)===s), ip};
 	}
 }
 
@@ -51,16 +52,17 @@ const isCFIP= (host,ATYP)=>new Promise((res,rej)=>{
 	}else res(cache[host]);
 });
 
-const socks= async({domain,psw,sport=1080,sbind='127.0.0.1',wkip,byip,cfhs=[]})=>{
+const socks= async({domain,psw,sport=1080,sbind='127.0.0.1',wkip,byip,proxy,cfhs=[]})=>{
 	Object.assign(CFDOMAN, cfhs);
 	if(wkip) Object.assign(opts,{lookup:(host,opts,cb)=>cb(null,wkip,wkip.indexOf(':')==-1?4:6)});
-	const url='wss://'+domain;	
-	net.createServer(socks=>socks.once('data', data=>{
+	if(proxy) Object.assign(opts,{agent:new SocksProxyAgent(proxy)});
+	const url='wss://'+domain;
+	net.createServer(ss=>ss.once('data', data=>{
 		const [VERSION]=data;//VERSION NMETHODS METHODS
-		if (VERSION!=0x05) socks.end();
+		if (VERSION!=0x05) ss.end();
 		else if(data.slice(2).some(method=>method==0x00)){//0x00,0x02
-			socks.write(Buffer.from([0x05, 0x00]));//select
-			socks.once('data', head=>{
+			ss.write(Buffer.from([0x05, 0x00]));//select
+			ss.once('data', head=>{
 				const [VERSION,CMD,RSV,ATYP]=head;
 				if(VERSION!=0x05 || CMD!=0x01) return;//connect
 				const host= ATYP==0x01? head.slice(4,-2).map(b=>parseInt(b,10)).join('.')://IPV4
@@ -68,29 +70,26 @@ const socks= async({domain,psw,sport=1080,sbind='127.0.0.1',wkip,byip,cfhs=[]})=
 					(ATYP==0x03? head.slice(5,-2).toString('utf8'):''));//DOMAIN
 				const port= head.slice(-2).readUInt16BE(0);
 
-				isCFIP(host,ATYP).then(({cf,ip})=>{
-					new Promise((res,rej)=>{
-						if(cf && !byip) net.connect(port, wkip?wkip:ip, function(){res(this);}).on('error',rej);
-						else new WebSocket(url, opts).on('open', function(e){
-							this.send(JSON.stringify({hostname:cf?byip:ip, port, psw}));
-							res(createWebSocketStream(this));
-						}).on('error',e=>rej);
-					}).then(s=>{
-						socks.write((head[1]=0x00,head));
-						logcb('conn:')({host,port,cf});
-						socks.pipe(s).on('error',e=>errcb('E1:')(e.message)).pipe(socks).on('error', e=>errcb('E2:')(e.message));
-					}).catch(e=>{
-						errcb('connect-catch:')(e.message);
-						socks.end((head[1]=0x03,head));
-					});
-				});
-
+				isCFIP(host,ATYP).then(({cf,ip})=>new Promise((res,rej)=>{
+					if(cf && !byip) net.connect(port, wkip?wkip:ip, function(){res(this);}).on('error',rej);
+					else new WebSocket(url, opts).on('open', function(e){
+						this.send(JSON.stringify({hostname:cf?byip:ip, port, psw}));
+						res(createWebSocketStream(this));
+					}).on('error',e=>rej);
+				}).then(s=>{
+					ss.write((head[1]=0x00,head));
+					logcb('conn:')({host,port,cf});
+					ss.pipe(s).on('error',e=>errcb('E1:')(e.message)).pipe(ss).on('error', e=>errcb('E2:')(e.message));
+				}).catch(e=>{
+					errcb('connect-catch:')(e.message);
+					ss.end((head[1]=0x03,head));
+				}));
 			});
-		} else socks.write(Buffer.from([0x05, 0xff]));//reject
+		} else ss.write(Buffer.from([0x05, 0xff]));//reject
 		}).on('error', e=>errcb('socks-err:')(e.message))
 	).listen(sport,sbind,logcb(`server start on: ${sbind}:${sport}`)).on('error',e=>errcb('socks5-err')(e.message));
 }
 fs.exists(cpath, e=>{
 	if(e) socks(JSON.parse(fs.readFileSync(cpath)));
-	else console.error('当前程序的目录没有config.txt文件!');
+	else errcb()('当前程序的目录没有config.txt文件!');
 });
