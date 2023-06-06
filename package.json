@@ -20,8 +20,9 @@
   },
   "homepage": "https://github.com/DNetL/cfp-plus#readme",
   "dependencies": {
-    "ws": "^8.2.3"
+    "ws": "^8.2.3",
+    "socks-proxy-agent": "^8.0.1"
   },
-  "version": "2.1.0",
+  "version": "2.2.0",
   "license": "MIT"
 }
